@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 # Cython Setup
 ################################################################################
 
+"""Build Cython extensions for both optimized and compatible variants.
+
+Updated to work with src/ layout where sources live under src/loxwebsocket.
+"""
+
 # Always build both variants; runtime will pick the right module
 logger.info("Building Cython extensions: optimized and compatible (both)")
 build_variants = {
@@ -21,12 +26,14 @@ build_variants = {
     "compatible": ["-O2", "-mtune=generic"],
 }
 
+source_dir = os.path.join("src", "loxwebsocket", "cython_modules")
+
 cython_extensions = []
 for variant, compile_args in build_variants.items():
     ext_name = f"loxwebsocket.cython_modules.extractor_{variant}"
-    pyx_original = "loxwebsocket/cython_modules/extractor.pyx"
-    pyx_variant = f"loxwebsocket/cython_modules/extractor_{variant}.pyx"
-    
+    pyx_original = os.path.join(source_dir, "extractor.pyx")
+    pyx_variant = os.path.join(source_dir, f"extractor_{variant}.pyx")
+
     # Copy the original .pyx to a variant-specific file
     shutil.copyfile(pyx_original, pyx_variant)
 
@@ -63,7 +70,7 @@ class CleanUpBuildExt(build_ext):
         super().run()
         # Remove the variant-specific .pyx files after compilation
         for variant in ("optimized", "compatible"):
-            variant_file = os.path.join("loxwebsocket", "cython_modules", f"extractor_{variant}.pyx")
+            variant_file = os.path.join("src", "loxwebsocket", "cython_modules", f"extractor_{variant}.pyx")
             if os.path.exists(variant_file):
                 os.remove(variant_file)
                 print(f"Removed variant-specific file: {variant_file}")

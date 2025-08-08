@@ -59,7 +59,11 @@ Repository = "https://github.com/yourusername/loxwebsocket.git"
 Issues = "https://github.com/yourusername/loxwebsocket/issues"
 
 [tool.setuptools]
-packages = ["loxwebsocket", "loxwebsocket.cython_modules"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["loxwebsocket*"]
 
 [tool.setuptools.package-data]
 "loxwebsocket.cython_modules" = ["*.pxd"]

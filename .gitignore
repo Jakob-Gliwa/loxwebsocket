@@ -188,3 +188,6 @@ Desktop.ini
 .directory
 .Trash-*
 .nfs*
+uv.lock
+src/loxwebsocket/cython_modules/extractor_optimized.pyx
+src/loxwebsocket/cython_modules/extractor_compatible.pyx
