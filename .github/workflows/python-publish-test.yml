@@ -27,8 +27,8 @@ jobs:
             pyproject.toml
             setup.py
 
-      - name: Build sdist and wheel
-        run: uv build --sdist --wheel
+      - name: Build source distribution
+        run: uv build --sdist
 
       - name: Store the distribution packages
         uses: actions/upload-artifact@v4
