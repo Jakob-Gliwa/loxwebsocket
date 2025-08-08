@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=61.0", "Cython>=3.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loxwebsocket"
+version = "1.0.0"
+description = "A Python library for connecting to Loxone Smart Home systems via WebSocket"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers", 
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["loxone", "websocket", "smart-home", "automation"]
+dependencies = [
+    "aiohttp>=3.8.0",
+    "orjson>=3.8.0",
+    "pycryptodome>=3.18.0",
+    "construct>=2.10.70",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0"
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
+    "black>=22.0.0",
+    "isort>=5.0.0",
+    "mypy>=1.0.0",
+]
+build = [
+    "setuptools>=61.0", 
+    "Cython>=3.0.0",
+    "wheel>=0.37.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/loxwebsocket"
+Documentation = "https://github.com/yourusername/loxwebsocket#readme"
+Repository = "https://github.com/yourusername/loxwebsocket.git"
+Issues = "https://github.com/yourusername/loxwebsocket/issues"
+
+[tool.setuptools]
+packages = ["loxwebsocket", "loxwebsocket.cython_modules"]
+
+[tool.setuptools.package-data]
+"loxwebsocket.cython_modules" = ["*.pxd"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=loxwebsocket --cov-report=term-missing"
+asyncio_mode = "strict"

@@ -1,0 +1,10 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include loxwebsocket/cython_modules/*.pyx
+include loxwebsocket/cython_modules/*.pxd
+include loxwebsocket/cython_modules/*.c
+recursive-include loxwebsocket *.py
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude loxwebsocket/cython_modules *.so
