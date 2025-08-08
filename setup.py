@@ -5,6 +5,7 @@ from Cython.Build import cythonize
 import shutil
 import os
 from setuptools.command.build_ext import build_ext
+import platform
 
 # Logging konfigurieren
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,12 +20,22 @@ logger = logging.getLogger(__name__)
 Updated to work with src/ layout where sources live under src/loxwebsocket.
 """
 
-# Always build both variants; runtime will pick the right module
-logger.info("Building Cython extensions: optimized and compatible (both)")
-build_variants = {
-    "optimized": ["-O3", "-march=native", "-ffast-math"],
-    "compatible": ["-O2", "-mtune=generic"],
-}
+# Plattform bestimmen
+arch = platform.uname().machine.lower()
+logger.info(f"Detected platform: {arch}")
+
+# Define build variants based on architecture
+if arch in ("x86_64", "amd64"):
+    logger.info("Building Cython extensions for AMD64 architecture - optimized & compatible versions")
+    build_variants = {
+        "optimized": ["-O3", "-march=native", "-ffast-math"],
+        "compatible": ["-O2", "-mtune=generic"]
+    }
+else:
+    logger.info("Building Cython extensions for non-AMD64 architecture - compatible version only")
+    build_variants = {
+        "compatible": ["-O2", "-mtune=generic"]
+    }
 
 source_dir = os.path.join("src", "loxwebsocket", "cython_modules")
 
