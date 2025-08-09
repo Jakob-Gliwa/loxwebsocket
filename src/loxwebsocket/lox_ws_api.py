@@ -21,30 +21,31 @@ from loxwebsocket.exceptions import LoxoneException
 from loxwebsocket.lxtoken import LxToken
 from loxwebsocket.encryption import LxJsonKeySalt, LxEncryptionHandler
 from construct import Struct, Int32ul, Bytes, this
-import subprocess
 import platform
+import cpuinfo
 _LOGGER = logging.getLogger(__name__)
 
-if "arm" in platform.machine().lower():
-    from .cython_modules.extractor_compatible import parse_message, parse_type_3_message
+machine_lower = platform.machine().lower()
+# On ARM/aarch64 we deliberately use the compatible extractor. Optimized build targets AVX on x86_64.
+if any(arch in machine_lower for arch in ("arm", "aarch64")):
+    from loxwebsocket.cython_modules.extractor_compatible import parse_message, parse_type_3_message
+    _EXTRACTOR_IMPL = f"compatible (arch={machine_lower})"
 else:
-    system = platform.system()
     try:
-        if system == "Linux":
-            output = subprocess.check_output("lscpu", shell=True, text=True)
-        elif system == "Darwin":  # macOS
-            output = subprocess.check_output("sysctl -a | grep machdep.cpu", shell=True, text=True)
-        elif system == "Windows":
-            output = subprocess.check_output("wmic cpu get Caption", shell=True, text=True)            
-        
-        if output and ("avx" in output.lower() and "avx2" in output.lower()):
+        info = cpuinfo.get_cpu_info() or {}
+        flags = {flag.lower() for flag in info.get("flags", [])}
+        if "avx" in flags and "avx2" in flags:
             from loxwebsocket.cython_modules.extractor_optimized import parse_message, parse_type_3_message
+            _EXTRACTOR_IMPL = "optimized (avx+avx2)"
         else:
             from loxwebsocket.cython_modules.extractor_compatible import parse_message, parse_type_3_message
-
-    except subprocess.CalledProcessError:
-        _LOGGER.error("Error checking CPU features. Using compatible extractor.")
+            _EXTRACTOR_IMPL = "compatible (missing avx/avx2)"
+    except Exception as e:  # Fallback on any detection failure
+        _LOGGER.warning("CPU feature detection failed (%s). Using compatible extractor.", e)
         from loxwebsocket.cython_modules.extractor_compatible import parse_message, parse_type_3_message
+        _EXTRACTOR_IMPL = "compatible (detection failed)"
+
+_LOGGER.info("Extractor in use: %s", _EXTRACTOR_IMPL)
 
 
 # Definition von EvDataText

@@ -30,6 +30,7 @@ dependencies = [
     "orjson>=3.8.0",
     "pycryptodome>=3.18.0",
     "construct>=2.10.70",
+    "py-cpuinfo>=9.0.0",
 ]
 
 [project.optional-dependencies]
