@@ -56,10 +56,9 @@ jobs:
   publish-to-pypi:
     needs: build
     runs-on: ubuntu-latest
-    # (Optional) Add an environment with required reviewers for approval gating
-    # environment:
-    #   name: pypi
-    #   url: https://pypi.org/p/loxwebsocket
+    environment:
+      name: pypi
+      url: https://pypi.org/p/loxwebsocket
 
     steps:
       - uses: actions/checkout@v4
