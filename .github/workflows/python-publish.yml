@@ -3,7 +3,12 @@ name: Build & Publish to PyPI
 on:
   release:
     types: [published]   # run only when a GitHub Release is published
-  workflow_dispatch: {}  # allow manual trigger
+  workflow_dispatch:      # allow manual trigger with explicit tag
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.2.3)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -64,9 +69,11 @@ jobs:
 
       # Ensure tag version matches project.version in pyproject.toml
       - name: Verify version matches tag
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
         shell: bash
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="$RELEASE_TAG"
           TAG_NO_V="${TAG#v}"
           echo "Tag: $TAG  Parsed: $TAG_NO_V"
           python - <<'PY'
