@@ -30,13 +30,14 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import re, pathlib, os
+          import re, pathlib, os, sys
           p = pathlib.Path('pyproject.toml')
           s = p.read_text(encoding='utf-8')
           v = os.environ['PKG_VERSION']
-          s_new = re.sub(r'(?m)^(version\s*=\s*")[^"]+("\s*$)', rf"\\1{v}\\2", s)
-          if s == s_new:
-              print('No version replacement occurred; check pyproject.toml format')
+          pattern = re.compile(r'(?m)^version\s*=\s*".*"$')
+          if not pattern.search(s):
+              print('No version line found in pyproject.toml'); sys.exit(1)
+          s_new = pattern.sub(f'version = "{v}"', s)
           p.write_text(s_new, encoding='utf-8')
           print('Set version to', v)
           PY
