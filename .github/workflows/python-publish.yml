@@ -76,6 +76,7 @@ jobs:
           TAG="$RELEASE_TAG"
           TAG_NO_V="${TAG#v}"
           echo "Tag: $TAG  Parsed: $TAG_NO_V"
+          export TAG_NO_V
           python - <<'PY'
           import tomllib, pathlib, sys, os
           ver = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
