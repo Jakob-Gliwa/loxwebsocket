@@ -15,6 +15,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-13, macos-14]   # macos-13 = Intel, macos-14 = ARM
     runs-on: ${{ matrix.os }}
+    env:
+      # Einheitliche, eindeutige Version pro Workflow-Run für TestPyPI
+      PKG_VERSION: 1.0.0.dev${{ github.run_number }}.post${{ github.run_attempt }}
 
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +25,21 @@ jobs:
 
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
+
+      - name: Set dynamic version for TestPyPI
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re, pathlib, os
+          p = pathlib.Path('pyproject.toml')
+          s = p.read_text(encoding='utf-8')
+          v = os.environ['PKG_VERSION']
+          s_new = re.sub(r'(?m)^(version\s*=\s*")[^"]+("\s*$)', rf"\\1{v}\\2", s)
+          if s == s_new:
+              print('No version replacement occurred; check pyproject.toml format')
+          p.write_text(s_new, encoding='utf-8')
+          print('Set version to', v)
+          PY
 
       - run: pip install --upgrade build cibuildwheel
 
