@@ -30,6 +30,10 @@ jobs:
         if: runner.os == 'Linux'
         run: python -m build --sdist --outdir dist
 
+      - name: Enable QEMU for ARM64
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+
       # Wheels für alle CPython-Versionen ≥ 3.8 (Linux, Win, macOS)
       - name: Build wheels
         env:
