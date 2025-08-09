@@ -1,0 +1,100 @@
+name: Build & Publish to PyPI
+
+on:
+  release:
+    types: [published]   # run only when a GitHub Release is published
+  workflow_dispatch: {}  # allow manual trigger
+
+permissions:
+  contents: read
+  id-token: write        # for PyPI trusted publishing (OIDC)
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-13, macos-14]   # macos-13 = Intel, macos-14 = ARM
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+
+      - run: pip install --upgrade build cibuildwheel
+
+      # sdist only once (Linux)
+      - name: Build sdist
+        if: runner.os == 'Linux'
+        run: python -m build --sdist --outdir dist
+
+      # Enable QEMU for cross-arch builds on Linux
+      - name: Enable QEMU for ARM64
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+
+      # Build wheels for all CPython versions >= 3.8 (Linux, Windows, macOS)
+      - name: Build wheels
+        env:
+          CIBW_BUILD: "cp3*-*"        # all 3.x
+          CIBW_SKIP:  "cp36-* cp37-* pp*"   # skip 3.6/3.7 + PyPy
+          CIBW_ARCHS_LINUX: "auto aarch64"
+        run: cibuildwheel --output-dir dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-package-${{ matrix.os }}-${{ runner.arch }}
+          path: dist/
+
+  publish-to-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    # (Optional) Add an environment with required reviewers for approval gating
+    # environment:
+    #   name: pypi
+    #   url: https://pypi.org/p/loxwebsocket
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+
+      # Ensure tag version matches project.version in pyproject.toml
+      - name: Verify version matches tag
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          TAG_NO_V="${TAG#v}"
+          echo "Tag: $TAG  Parsed: $TAG_NO_V"
+          python - <<'PY'
+          import tomllib, pathlib, sys, os
+          ver = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          print('pyproject version:', ver)
+          tag = os.environ.get('TAG_NO_V')
+          print('tag version      :', tag)
+          sys.exit(0 if ver == tag else 1)
+          PY
+
+      # Collect all built distributions from matrix jobs
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: python-package-*
+          path: artifacts/
+
+      - name: Collect distributions
+        run: |
+          mkdir -p dist
+          find artifacts -name '*.whl'    -exec cp {} dist/ \;
+          find artifacts -name '*.tar.gz' -exec cp {} dist/ \;
+          echo "Collected distributions:"
+          ls -la dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          verbose: true
+
+
