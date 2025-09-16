@@ -266,7 +266,7 @@ class LoxWs:
             seconds_to_refresh = self._token.get_seconds_to_expire()
             await asyncio.sleep(seconds_to_refresh)
             self._token = LxToken()
-            self._refresh_token()
+            await self._refresh_token()
 
     async def _refresh_token(self):
         """Refresh the token after it has expired."""
