@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loxwebsocket"
-version = "0.5.1"
+version = "0.5.2"
 description = "A Python library for connecting to Loxone Smart Home systems via WebSocket"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -74,3 +74,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=loxwebsocket --cov-report=term-missing"
 asyncio_mode = "strict"
+
+[tool.uv]
+native-tls = true

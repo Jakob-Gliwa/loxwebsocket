@@ -472,14 +472,11 @@ class LoxWs:
         """Type 1: Binary file (not further processed here)"""
         return event_dict
     
-    def process_packet(self,packet):
-        # Rückgabe des Ergebnisses als Tupel
-        event_uuid = json.dumps(uuid.UUID(bytes_le=packet[0]))
-        return event_uuid[1:24] + event_uuid[25:37], packet[1]
-    
     async def extract_type_2_message(self, message, event_dict):
-        #event_dict.update(parse_message(message))
-        #event_dict.update(map(self.process_packet, iter_unpack("16s d", message)))
+        """
+        Type 2: Value updates.
+        Uses optimized Cython parser for high-performance message parsing.
+        """
         return parse_message(message)
     
     async def extract_type_3_message(self, message: bytes, event_dict: dict) -> dict:

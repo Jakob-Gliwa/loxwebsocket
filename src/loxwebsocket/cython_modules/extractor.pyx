@@ -4,7 +4,7 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True, nonecheck=False, language_level=3
 
 from libc.stdint cimport uint8_t
-from cpython.bytes cimport PyBytes_AsStringAndSize, PyBytes_FromStringAndSize
+from cpython.bytes cimport PyBytes_AsStringAndSize, PyBytes_FromStringAndSize, PyBytes_AS_STRING
 from cpython.dict cimport PyDict_New, PyDict_SetItem
 from cpython.float cimport PyFloat_FromDouble
 from cython cimport inline
@@ -15,20 +15,26 @@ cdef extern from "Python.h":
     int _PyDict_SetItem_KnownHash(object, object, object, Py_ssize_t) nogil
     Py_ssize_t PyObject_Hash(object) nogil
 
-cdef char[16] hex_digits = [
-    b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7',
-    b'8', b'9', b'a', b'b', b'c', b'd', b'e', b'f'
-]
+# Hex digits lookup string (simpler and more efficient)
+cdef char* hex_digits = "0123456789abcdef"
 
 cdef inline char nibble_to_hex(uint8_t nibble):
+    """Convert a 4-bit nibble to its hexadecimal character representation."""
     return hex_digits[nibble & 0xF]
 
-# Neue interne Funktion die direkt mit Pointern arbeitet
+# Internal function: Convert bytes_le to Loxone UUID format (8-4-4-4+12, without last dash)
 cdef bytes _convert_bytes_to_uuid_ptr(const uint8_t* byte_ptr):
-    cdef char uuid_str[35]  # 36 Zeichen ohne Null-Terminierung, hier 35 + 0
+    """
+    Convert bytes_le to Loxone-specific UUID format.
+    Format: 8-4-4-4+12 (without the last dash between 4th and 5th block).
+    Optimized: Writes directly into bytes buffer, avoids memcpy.
+    """
+    cdef bytes uuid_bytes = PyBytes_FromStringAndSize(NULL, 35)
+    cdef char* uuid_str = PyBytes_AS_STRING(uuid_bytes)
     cdef int j = 0
+    cdef int i
 
-    # --- 4 bytes (little-endian) ---
+    # time_low (4 bytes, little-endian) -> reverse
     for i in range(3, -1, -1):
         uuid_str[j]   = nibble_to_hex(byte_ptr[i] >> 4)
         uuid_str[j+1] = nibble_to_hex(byte_ptr[i] & 0x0F)
@@ -36,7 +42,7 @@ cdef bytes _convert_bytes_to_uuid_ptr(const uint8_t* byte_ptr):
     uuid_str[j] = b'-'
     j += 1
 
-    # --- 2 bytes (little-endian) ---
+    # time_mid (2 bytes, little-endian) -> reverse
     for i in range(5, 3, -1):
         uuid_str[j]   = nibble_to_hex(byte_ptr[i] >> 4)
         uuid_str[j+1] = nibble_to_hex(byte_ptr[i] & 0x0F)
@@ -44,7 +50,7 @@ cdef bytes _convert_bytes_to_uuid_ptr(const uint8_t* byte_ptr):
     uuid_str[j] = b'-'
     j += 1
 
-    # --- 2 bytes (little-endian) ---
+    # time_hi (2 bytes, little-endian) -> reverse
     for i in range(7, 5, -1):
         uuid_str[j]   = nibble_to_hex(byte_ptr[i] >> 4)
         uuid_str[j+1] = nibble_to_hex(byte_ptr[i] & 0x0F)
@@ -52,22 +58,35 @@ cdef bytes _convert_bytes_to_uuid_ptr(const uint8_t* byte_ptr):
     uuid_str[j] = b'-'
     j += 1
 
-    # --- 2 bytes (big-endian) ---
+    # clock_seq (2 bytes, big-endian) -> unchanged
+    # NO dash here (Loxone format)
     for i in range(8, 10):
         uuid_str[j]   = nibble_to_hex(byte_ptr[i] >> 4)
         uuid_str[j+1] = nibble_to_hex(byte_ptr[i] & 0x0F)
         j += 2
 
-    # --- 6 bytes (big-endian) ---
+    # node (6 bytes, big-endian) -> unchanged
     for i in range(10, 16):
         uuid_str[j]   = nibble_to_hex(byte_ptr[i] >> 4)
         uuid_str[j+1] = nibble_to_hex(byte_ptr[i] & 0x0F)
         j += 2
 
-    return PyBytes_FromStringAndSize(uuid_str, 35)
+    return uuid_bytes
 
-# Public Wrapper-Funktion für Python-API-Kompatibilität
+# Public API: Convert bytes_le to Loxone UUID format
 cpdef bytes convert_bytes_to_uuid(bytes input_bytes):
+    """
+    Convert bytes_le to Loxone UUID format (8-4-4-4+12, without last dash).
+    
+    Args:
+        input_bytes: 16-byte bytes object in little-endian format
+        
+    Returns:
+        35-byte string in Loxone UUID format
+        
+    Raises:
+        ValueError: If input is not exactly 16 bytes
+    """
     cdef Py_ssize_t len_input
     cdef const uint8_t* byte_ptr
 
