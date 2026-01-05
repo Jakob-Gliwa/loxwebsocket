@@ -47,6 +47,8 @@ else:
 
 _LOGGER.info("Extractor in use: %s", _EXTRACTOR_IMPL)
 
+_DEBUG_ENABLED = _LOGGER.isEnabledFor(logging.DEBUG)
+
 
 # Definition von EvDataText
 EvDataText = Struct(
@@ -338,7 +340,8 @@ class LoxWs:
     async def send_websocket_command(self, device_uuid: str, value: str) -> None:
         """Send a websocket command to the Miniserver."""
         command = f"jdev/sps/io/{device_uuid.decode() if isinstance(device_uuid, bytes) else device_uuid}/{value}"
-        _LOGGER.debug("send command: %s", command)
+        if _DEBUG_ENABLED:
+            _LOGGER.debug("send command: %s", command)
         enc_command = await self._encryption_handler.encrypt(command)
         await self._ws.send_str(enc_command)
 
@@ -411,7 +414,8 @@ class LoxWs:
         if not await self.parse_loxone_message_header_message(message):
             parsed_data = await self._message_handler[self._current_message_type](message, {})
             if parsed_data:
-                _LOGGER.debug("message [type:%s]: %s",self._current_message_type,parsed_data)
+                if _DEBUG_ENABLED: 
+                    _LOGGER.debug("message [type:%s]: %s", self._current_message_type, parsed_data)
 
                 for callback in self._message_callbacks[self._current_message_type]:
                     task = asyncio.create_task(callback(parsed_data, self._current_message_type))
@@ -432,7 +436,8 @@ class LoxWs:
         if len(message) == 8:
             try:
                 self._current_message_type = message[1]
-                _LOGGER.debug("Current message type:%s", self._current_message_type)
+                if _DEBUG_ENABLED:
+                    _LOGGER.debug("Current message type:%s", self._current_message_type)
                 return True
             except ValueError:
                 _LOGGER.warning("error parse_loxone_message...")
@@ -485,7 +490,8 @@ class LoxWs:
     async def extract_type_6_message(self, message, event_dict):
         """Type 6: Keepalive response."""
         event_dict["keep_alive"] = "received"
-        _LOGGER.debug("Keep alive response received...")
+        if _DEBUG_ENABLED:
+            _LOGGER.debug("Keep alive response received...")
         return event_dict
 
     async def extract_other_messages(self, message, event_dict):

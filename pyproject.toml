@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "Cython>=3.0.0", "wheel>=0.40.0"]
+requires = ["setuptools>=80.9.0", "Cython>=3.2.4", "wheel>=0.45.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,8 +7,8 @@ name = "loxwebsocket"
 version = "0.5.2"
 description = "A Python library for connecting to Loxone Smart Home systems via WebSocket"
 readme = "README.md"
-requires-python = ">=3.8"
-license = {text = "MIT"}
+requires-python = ">=3.9"
+license = "MIT"
 authors = [
     {name = "Jakob Gliwa", email = "your.email@example.com"}
 ]
@@ -16,7 +16,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers", 
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -26,9 +25,9 @@ classifiers = [
 ]
 keywords = ["loxone", "websocket", "smart-home", "automation"]
 dependencies = [
-    "aiohttp>=3.8.0",
-    "orjson>=3.8.0",
-    "pycryptodome>=3.18.0",
+    "aiohttp>=3.13.3",
+    "orjson>=3.11.5",
+    "pycryptodome>=3.23.0",
     "construct>=2.10.70",
     "py-cpuinfo>=9.0.0",
 ]
@@ -48,9 +47,9 @@ dev = [
     "mypy>=1.0.0",
 ]
 build = [
-    "setuptools>=61.0", 
-    "Cython>=3.0.0",
-    "wheel>=0.37.0"
+    "setuptools>=80.9.0", 
+    "Cython>=3.2.4",
+    "wheel>=0.45.1"
 ]
 
 [project.urls]
