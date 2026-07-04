@@ -249,10 +249,38 @@ class LoxWs:
             self.background_tasks.add(task)
             task.add_done_callback(self.background_tasks.discard)
 
+    def _cancel_stale_background_tasks(self) -> None:
+        """Cancel the previous connection's background tasks immediately.
+
+        ``start()`` only cancels them right before creating the *next*
+        connection's tasks - i.e. after a new ``async_init`` has already
+        succeeded. During a reconnect that spans several attempts a stale
+        ``keep_alive``/``refresh_token``/``ws_listen`` can otherwise linger,
+        wake up mid-sleep still referencing the now-closed socket, and either
+        write to a dead transport (misreported as a fresh disconnect) or race
+        the new handshake's ``receive()``.
+
+        The task currently driving the reconnect must be spared: ``reconnect``
+        runs inside a background task (via ``handle_connection_interrupt``), so
+        cancelling it here would raise ``CancelledError`` at the next await and
+        abort the reconnect loop. It stays in the set for ``start()`` to cancel
+        later, exactly as before. When called from outside a background task
+        (e.g. a direct ``reconnect`` in tests) nothing is spared.
+        """
+        current = asyncio.current_task()
+        for task in list(self.background_tasks):
+            if task is current:
+                continue
+            task.cancel()
+            self.background_tasks.discard(task)
+
     async def reconnect(self) -> None:
         if self.state == "RECONNECTING":
             return
         await self.stop()
+        # Tear down the dead connection's background tasks now instead of
+        # waiting for the next successful start(); see the helper's docstring.
+        self._cancel_stale_background_tasks()
         self._token = LxToken()
         self.state = "RECONNECTING"
         """Reconnect the websocket using a series of attempts."""
@@ -340,6 +368,12 @@ class LoxWs:
         try:
             while self.state == "CONNECTED":
                 await asyncio.sleep(second)
+                # The socket may have been torn down while we slept (reconnect
+                # or stop). Re-check before writing: a send on the now-None or
+                # closed socket would raise, be misreported as a *fresh*
+                # disconnect and trigger a redundant reconnect().
+                if self.state != "CONNECTED" or self._ws is None or self._ws.closed:
+                    break
                 await self._ws.send_str("keepalive")
         except Exception as e:
             await self.handle_connection_interrupt(exception=e)

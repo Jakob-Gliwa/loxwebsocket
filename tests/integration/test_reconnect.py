@@ -7,6 +7,7 @@ events), T26 (close-code classification) and T27 (http_ping uses the logger).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock
 
@@ -91,6 +92,87 @@ class TestReconnectReentrancy:
         # Guard hit before any teardown/attempt work.
         stop.assert_not_awaited()
         client.async_init.assert_not_awaited()
+
+
+# --------------------------------------------------------------------------- #
+# Stale background tasks are cancelled at teardown, not deferred to start()    #
+# --------------------------------------------------------------------------- #
+class TestCancelStaleBackgroundTasks:
+    async def test_cancels_tasks_when_called_outside_background_tasks(self, client):
+        async def long_running():
+            await asyncio.Event().wait()  # blocks until cancelled
+
+        t1 = asyncio.create_task(long_running())
+        t2 = asyncio.create_task(long_running())
+        client.background_tasks.update({t1, t2})
+        await asyncio.sleep(0)  # let both start and block
+
+        client._cancel_stale_background_tasks()
+        await asyncio.sleep(0)  # let cancellation propagate
+
+        assert t1.cancelled()
+        assert t2.cancelled()
+        assert client.background_tasks == set()
+
+    async def test_spares_the_current_driving_task(self, client):
+        """The task calling the helper (the reconnect driver) must survive.
+
+        Cancelling it would raise CancelledError at the next await and abort
+        the whole reconnect loop - the exact regression this exclusion guards
+        against. The stale sibling must still be cancelled.
+        """
+        stale = asyncio.create_task(asyncio.Event().wait())
+        client.background_tasks.add(stale)
+        await asyncio.sleep(0)  # let the stale task block
+
+        result: dict[str, object] = {}
+
+        async def driver():
+            client.background_tasks.add(asyncio.current_task())
+            client._cancel_stale_background_tasks()
+            # If the helper had cancelled us, this await would raise.
+            await asyncio.sleep(0)
+            result["driver_survived"] = True
+            result["stale_cancelled"] = stale.cancelled()
+            result["current_still_in_set"] = (
+                asyncio.current_task() in client.background_tasks
+            )
+
+        driver_task = asyncio.create_task(driver())
+        await driver_task
+
+        assert result["driver_survived"] is True
+        assert result["stale_cancelled"] is True
+        # Left in the set so start() cancels it later, exactly as before.
+        assert result["current_still_in_set"] is True
+
+    async def test_reconnect_cancels_stale_task_before_first_attempt(
+        self, client, local_sleep_patch, monkeypatch
+    ):
+        """End-to-end: a stale task present at reconnect start ends up cancelled.
+
+        Uses a real stop() so the teardown path runs. The stale task blocks on
+        an Event (not asyncio.sleep) so local_sleep_patch - which speeds up
+        reconnect's own delay - can't resolve it early and mask the cancel.
+        """
+        client.state = "CONNECTED"
+        client._max_reconnect_attempts = 1
+        client._ws = None
+        client._session = None
+        monkeypatch.setattr(client, "http_ping", AsyncMock(return_value=True))
+        monkeypatch.setattr(client, "async_init", AsyncMock(return_value=True))
+        monkeypatch.setattr(client, "start", AsyncMock())
+        monkeypatch.setattr(client, "send_event", AsyncMock())
+
+        stale = asyncio.create_task(asyncio.Event().wait())
+        client.background_tasks.add(stale)
+        await asyncio.sleep(0)  # let it start and block
+
+        await client.reconnect()
+        await asyncio.sleep(0)  # let cancellation propagate
+
+        assert stale.cancelled()
+        assert stale not in client.background_tasks
 
 
 # --------------------------------------------------------------------------- #

@@ -187,6 +187,35 @@ class TestKeepAlive:
             interrupt.await_args.kwargs.get("exception"), ConnectionError
         )
 
+    async def test_torn_down_during_sleep_breaks_without_reconnect(
+        self, client, fake_ws, monkeypatch
+    ):
+        """A connection dropped *while keep_alive slept* must exit cleanly.
+
+        Regression guard: without the post-sleep re-check the loop would call
+        ``send_str`` on the now-``None`` socket, raise, and be misreported as a
+        fresh disconnect - triggering a redundant reconnect() and inflating
+        disconnect counts. It must break out silently instead.
+        """
+        client._ws = fake_ws
+        client.state = "CONNECTED"
+        interrupt = AsyncMock()
+        monkeypatch.setattr(client, "handle_connection_interrupt", interrupt)
+
+        async def teardown_during_sleep(delay, result=None):
+            # Simulate reconnect/stop tearing the socket down mid-sleep.
+            client.state = "RECONNECTING"
+            client._ws = None
+
+        monkeypatch.setattr(
+            "loxwebsocket.lox_ws_api.asyncio.sleep", teardown_during_sleep
+        )
+
+        await client.keep_alive(60)
+
+        interrupt.assert_not_awaited()
+        assert fake_ws.sent == []
+
 
 # --------------------------------------------------------------------------- #
 # ws_listen                                                                   #
