@@ -118,6 +118,9 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
+          # Make re-runs after a partial upload idempotent; only byte-identical
+          # already-published files are skipped.
+          skip-existing: true
           verbose: true
 
 
