@@ -22,10 +22,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {persist-credentials: false}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
 
       - run: pip install --upgrade build cibuildwheel
@@ -38,17 +38,18 @@ jobs:
       # Enable QEMU for cross-arch builds on Linux
       - name: Enable QEMU for ARM64
         if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
-      # Build wheels for all CPython versions >= 3.8 (Linux, Windows, macOS)
+      # Build wheels for all CPython versions (cibuildwheel filters by
+      # requires-python >= 3.10 automatically; PyPy isn't enabled in
+      # cibuildwheel 4.x, so no CIBW_SKIP is needed).
       - name: Build wheels
         env:
           CIBW_BUILD: "cp3*-*"        # all 3.x
-          CIBW_SKIP:  "cp36-* cp37-* pp*"   # skip 3.6/3.7 + PyPy
           CIBW_ARCHS_LINUX: "auto aarch64"
         run: cibuildwheel --output-dir dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: python-package-${{ matrix.os }}-${{ runner.arch }}
           path: dist/
@@ -61,9 +62,9 @@ jobs:
       url: https://pypi.org/p/loxwebsocket
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
 
       # Ensure tag version matches project.version in pyproject.toml
@@ -86,7 +87,7 @@ jobs:
           PY
 
       # Collect all built distributions from matrix jobs
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: python-package-*
           path: artifacts/

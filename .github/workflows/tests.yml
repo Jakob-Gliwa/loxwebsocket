@@ -19,10 +19,12 @@ jobs:
         # requires-python is >=3.10 (see pyproject.toml).
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        # setup-uv v8 ships immutable releases with no moving major tag, so
+        # pin the exact version instead of @v8.
+        uses: astral-sh/setup-uv@v8.2.0
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -39,10 +41,10 @@ jobs:
     name: ruff + mypy gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8.2.0
 
       - name: Set up Python
         run: uv python install 3.12

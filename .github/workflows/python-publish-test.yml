@@ -1,7 +1,11 @@
 name: Build & Publish to TestPyPI
 
 on:
-  push:
+  # Only run after the "tests" workflow has finished on main; the build job
+  # below then gates on its success. Manual dispatch stays available.
+  workflow_run:
+    workflows: ["tests"]
+    types: [completed]
     branches: [main]
   workflow_dispatch: {}
 
@@ -11,6 +15,10 @@ permissions:
 
 jobs:
   build:
+    # Publish only when triggered manually, or when the upstream tests passed.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-15-intel, macos-14]   # macos-15-intel = Intel, macos-14 = ARM
@@ -20,10 +28,14 @@ jobs:
       PKG_VERSION: 1.0.0.post${{ github.run_attempt }}.dev${{ github.run_number }}
 
     steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # Build the exact commit that passed tests (workflow_run context);
+          # falls back to the default ref on manual dispatch.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: {python-version: "3.12"}
 
       - name: Set dynamic version for TestPyPI
@@ -51,17 +63,18 @@ jobs:
 
       - name: Enable QEMU for ARM64
         if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
-      # Wheels für alle CPython-Versionen ≥ 3.8 (Linux, Win, macOS)
+      # Wheels für alle CPython-Versionen (cibuildwheel filtert automatisch
+      # anhand von requires-python >= 3.10; PyPy ist in cibuildwheel 4.x nicht
+      # aktiviert, daher kein CIBW_SKIP nötig).
       - name: Build wheels
         env:
           CIBW_BUILD: "cp3*-*"        # alle 3.x
-          CIBW_SKIP:  "cp36-* cp37-* pp*"   # 3.6/3.7 + PyPy raus
           CIBW_ARCHS_LINUX: "auto aarch64"
         run: cibuildwheel --output-dir dist
 
-      - uses: actions/upload-artifact@v4      # pro Runner eigene Artefakte
+      - uses: actions/upload-artifact@v7      # pro Runner eigene Artefakte
         with:
           name: python-package-${{ matrix.os }}-${{ runner.arch }}
           path: dist/
@@ -75,7 +88,7 @@ jobs:
 
     steps:
       # alle Artefakte einsammeln
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: python-package-*
           path: artifacts/
