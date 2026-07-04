@@ -55,41 +55,40 @@ class LxEncryptionHandler:
         async with aiohttp.ClientSession(
             auth=aiohttp.BasicAuth(login=username, password=password),
             timeout=aiohttp.ClientTimeout(total=c.TIMEOUT)
-        ) as client:
-            async with client.get(
-                command,
-                allow_redirects=True,
-                ssl=False  # Disable SSL verification
-            ) as response:
-                _LOGGER.debug("Received response with status: %s", response.status)
+        ) as client, client.get(
+            command,
+            allow_redirects=True,
+            ssl=False  # Disable SSL verification
+        ) as response:
+            _LOGGER.debug("Received response with status: %s", response.status)
 
-                # Raise exception for non-200 status codes
-                if response.status != 200:
-                    _LOGGER.error("Non-200 response received: %s", response.status)
-                    raise ValueError(f"Non-200 response: {response.status}")
+            # Raise exception for non-200 status codes
+            if response.status != 200:
+                _LOGGER.error("Non-200 response received: %s", response.status)
+                raise ValueError(f"Non-200 response: {response.status}")
 
-                # Parse JSON response
-                try:
-                    resp_json = await response.json(loads=json.loads)
-                except aiohttp.ContentTypeError as e:
-                    _LOGGER.error("Response is not in JSON format")
-                    raise ValueError("Invalid JSON response from server") from e
+            # Parse JSON response
+            try:
+                resp_json = await response.json(loads=json.loads)
+            except aiohttp.ContentTypeError as e:
+                _LOGGER.error("Response is not in JSON format")
+                raise ValueError("Invalid JSON response from server") from e
 
-                if not ("LL" in resp_json and "value" in resp_json["LL"]):
-                    _LOGGER.error("Response missing required fields")
-                    raise ValueError("Response missing LL.value field")
+            if not ("LL" in resp_json and "value" in resp_json["LL"]):
+                _LOGGER.error("Response missing required fields")
+                raise ValueError("Response missing LL.value field")
 
-                public_key = resp_json["LL"]["value"]
-                _LOGGER.debug("Successfully retrieved public key")
-                if not public_key:
-                    _LOGGER.error("Public key is empty")
-                    raise ValueError("Public key is empty")
-                public_key = public_key.replace(
-                        "-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----\n"
-                    ).replace(
-                        "-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----\n"
-                    )
-                return public_key
+            public_key = resp_json["LL"]["value"]
+            _LOGGER.debug("Successfully retrieved public key")
+            if not public_key:
+                _LOGGER.error("Public key is empty")
+                raise ValueError("Public key is empty")
+            public_key = public_key.replace(
+                    "-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----\n"
+                ).replace(
+                    "-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----\n"
+                )
+            return public_key
     
     async def generate_session_key(self,username, password, loxone_url):
         try:
@@ -114,6 +113,7 @@ class LxEncryptionHandler:
         self._salt_time_stamp = round(time.time())
         self._salt_used_count = 0
         self._salt = salt
+        return salt
 
     def hash_credentials(self, key_salt, password, username):
         pwd_hash = username + ":" + self.generate_password_hash(key_salt, password)

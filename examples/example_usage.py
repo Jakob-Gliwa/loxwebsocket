@@ -50,11 +50,11 @@ async def example_connection():
         
         ws_api.add_message_callback(on_message, message_types=[0, 1, 2, 3, 6])
         
-        # Example: Add event callbacks
-        def on_connected():
+        # Example: Add event callbacks (must be async coroutine functions)
+        async def on_connected():
             print("🔗 Connection established")
         
-        def on_disconnected():
+        async def on_disconnected():
             print("🔌 Connection lost")
         
         ws_api.add_event_callback(on_connected, event_types=[ws_api.EventType.CONNECTED])

@@ -1,11 +1,6 @@
-import os
-import logging
 from setuptools import setup
 from Cython.Build import cythonize
 from setuptools.extension import Extension
-
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 # Definiere zwei Build-Varianten: optimized & compatible
 build_variants = {

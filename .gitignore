@@ -191,3 +191,7 @@ Desktop.ini
 uv.lock
 src/loxwebsocket/cython_modules/extractor_optimized.pyx
 src/loxwebsocket/cython_modules/extractor_compatible.pyx
+
+# Reference documents
+/refs
+.vscode/settings.json

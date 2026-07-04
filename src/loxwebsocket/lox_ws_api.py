@@ -10,8 +10,6 @@ import logging
 import queue
 import time
 from typing import Optional
-import uuid
-from struct import iter_unpack
 import aiohttp
 from aiohttp import WSMsgType
 import orjson as json
@@ -20,7 +18,6 @@ import loxwebsocket.const as c
 from loxwebsocket.exceptions import LoxoneException
 from loxwebsocket.lxtoken import LxToken
 from loxwebsocket.encryption import LxJsonKeySalt, LxEncryptionHandler
-from construct import Struct, Int32ul, Bytes, this
 import platform
 import cpuinfo
 _LOGGER = logging.getLogger(__name__)
@@ -50,18 +47,6 @@ _LOGGER.info("Extractor in use: %s", _EXTRACTOR_IMPL)
 _DEBUG_ENABLED = _LOGGER.isEnabledFor(logging.DEBUG)
 
 
-# Definition von EvDataText
-EvDataText = Struct(
-    "uuid" / Bytes(16),           # 128-Bit UUID
-    "uuidIcon" / Bytes(16),       # 128-Bit UUID des Icons
-    "textLength" / Int32ul,       # 32-Bit unsigned integer (little endian)
-    "text" / Bytes(this.textLength)  # Text mit Länge textLength
-)
-
-async def own_dumps(obj) -> str:
-    return json.dumps(obj).decode("utf-8")
-
-
 
 class LoxWs:
 
@@ -74,10 +59,8 @@ class LoxWs:
 
     """Loxone Websocket singleton class."""
     _instance = None
-    _lock = asyncio.Lock()  # Lock object to ensure thread safety
     _initialized = False
     _receive_updates = True
-    reconnect_event = asyncio.Event()
     _event_callbacks = {}
 
     def __init__(
@@ -123,67 +106,83 @@ class LoxWs:
             if not self._ws or self._ws.closed or self.state != "CONNECTED":
                 self._username = user
                 self._password = password
+                # aiohttp requires an absolute URL with a scheme; default to
+                # plain http:// when the caller passes a bare host/IP.
+                if not loxone_url.startswith(("http://", "https://")):
+                    loxone_url = f"http://{loxone_url}"
                 self._loxone_url = loxone_url
                 self._loxone_ws_url = loxone_url.replace("https", "wss") if loxone_url.startswith("https:") else loxone_url.replace("http", "ws")
                 await self.async_init()
                 await self.start()
+                await self.send_event(self.EventType.CONNECTED)
 
     async def async_init(self):
         """Initialize encryption, connect to Loxone, exchange keys, authenticate."""
+        # Close any resources left over from a previous (failed) attempt so
+        # repeated reconnect attempts can't leak aiohttp ClientSessions/sockets.
+        await self._close_connection_resources()
+
         self._session_key = await self._encryption_handler.generate_session_key(
             self._username, self._password, self._loxone_url)
 
-        _LOGGER.debug("Connecting to Websocket with aiohttp...")
-        self._session = aiohttp.ClientSession(json_serialize=json.dumps,)
-        self._ws = await self._session.ws_connect(
-            f"{self._loxone_ws_url}/ws/rfc6455",
-            timeout=c.TIMEOUT,
-            heartbeat=None,
-            autoping=False
-        )
-        
-        _LOGGER.debug("Connection established, CDM-KEY-EXCHANGE starting...")
-        await self._ws.send_str(f"{c.CMD_KEY_EXCHANGE}{self._session_key}")
+        try:
+            _LOGGER.debug("Connecting to Websocket with aiohttp...")
+            self._session = aiohttp.ClientSession(json_serialize=json.dumps,)
+            self._ws = await self._session.ws_connect(
+                f"{self._loxone_ws_url}/ws/rfc6455",
+                timeout=c.TIMEOUT,
+                heartbeat=None,
+                autoping=False
+            )
 
-        # 1) wait for session key header
-        header_msg = await self._ws.receive()
-        if header_msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
-            await self.parse_loxone_message_header_message(header_msg.data)
+            _LOGGER.debug("Connection established, CDM-KEY-EXCHANGE starting...")
+            await self._ws.send_str(f"{c.CMD_KEY_EXCHANGE}{self._session_key}")
 
-        # 2) wait for session key response
-        data_msg = await self._ws.receive()
-        if data_msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
-            resp_json = json.loads(data_msg.data)
-            if resp_json.get("LL").get("Code") != "200":
-                raise ConnectionError("Session key exchange failed.")
-        elif data_msg.type == WSMsgType.CLOSED:
-            _LOGGER.debug("Websocket closed during session key exchange.")
-            raise ConnectionError("Websocket closed during session key exchange.")
-        else:
-            raise ValueError("Unexpected Message Type during session key exchange.")
+            # 1) wait for session key header
+            header_msg = await self._ws.receive()
+            if header_msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
+                await self.parse_loxone_message_header_message(header_msg.data)
 
-        _LOGGER.debug("ENCRYPTION READY")
+            # 2) wait for session key response
+            data_msg = await self._ws.receive()
+            if data_msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
+                resp_json = json.loads(data_msg.data)
+                if resp_json.get("LL").get("Code") != "200":
+                    raise ConnectionError("Session key exchange failed.")
+            elif data_msg.type == WSMsgType.CLOSED:
+                _LOGGER.debug("Websocket closed during session key exchange.")
+                raise ConnectionError("Websocket closed during session key exchange.")
+            else:
+                raise ValueError("Unexpected Message Type during session key exchange.")
 
-        if (
-            self._token is None
-            or self._token.token == ""
-            or self._token.get_seconds_to_expire() < 300
-        ):
-            await self.acquire_token()
-        else:
-            _LOGGER.debug("use loaded token...")
-            try:
-                await self.use_token()
-            except Exception as e:
-                _LOGGER.error("Error using existing token. %s. Trying to acquire new token...", e)
+            _LOGGER.debug("ENCRYPTION READY")
+
+            if (
+                self._token is None
+                or self._token.token == ""
+                or self._token.get_seconds_to_expire() < 300
+            ):
                 await self.acquire_token()
+            else:
+                _LOGGER.debug("use loaded token...")
+                try:
+                    await self.use_token()
+                except Exception as e:
+                    _LOGGER.error("Error using existing token. %s. Trying to acquire new token...", e)
+                    await self.acquire_token()
 
-        if self._receive_updates:
-            await self.send_command(c.CMD_ENABLE_UPDATES)
+            if self._receive_updates:
+                await self.send_command(c.CMD_ENABLE_UPDATES)
 
-        self.state = "CONNECTED"
-        
-        return True
+            self.state = "CONNECTED"
+
+            return True
+        except BaseException:
+            # Handshake failed: close the session/ws opened in this attempt
+            # before propagating, so the next reconnect attempt starts clean
+            # instead of leaking an unclosed ClientSession.
+            await self._close_connection_resources()
+            raise
 
     async def start(self) -> None:
 
@@ -205,7 +204,7 @@ class LoxWs:
         if self.state == "RECONNECTING":
             return
         await self.stop()
-        self.token = LxToken()
+        self._token = LxToken()
         self.state = "RECONNECTING"
         """Reconnect the websocket using a series of attempts."""
         attempt = 0
@@ -221,6 +220,7 @@ class LoxWs:
                 if await self.async_init():
                     _LOGGER.debug("Reconnection successful.")
                     await self.start()
+                    await self.send_event(self.EventType.RECONNECTED)
                     break
                 else:
                     _LOGGER.debug("Reconnection failed.")
@@ -232,21 +232,39 @@ class LoxWs:
         
     async def http_ping(self):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self._loxone_url, timeout=3) as response:
-                    return response.status == 200
+            async with aiohttp.ClientSession() as session, session.get(self._loxone_url, timeout=3) as response:
+                return response.status == 200
         except Exception as e:
             print(f"HTTP-Check fehlgeschlagen: {e}")
             return False
+
+    async def _close_connection_resources(self) -> None:
+        """Close the websocket and HTTP session if open and drop the references.
+
+        Safe to call multiple times. Clearing the references afterwards
+        prevents a subsequent ``async_init`` from overwriting (and thereby
+        leaking) a session that was never closed.
+        """
+        if self._ws is not None:
+            try:
+                await self._ws.close()
+            except Exception as e:
+                _LOGGER.debug("Error while closing websocket: %s", e)
+            finally:
+                self._ws = None
+        if self._session is not None:
+            try:
+                await self._session.close()
+            except Exception as e:
+                _LOGGER.debug("Error while closing session: %s", e)
+            finally:
+                self._session = None
 
     async def stop(self) -> int:
         """Close the websocket and the underlying session."""
         try:
             self.state = "STOPPING"
-            if self._ws:
-                await self._ws.close()
-            if self._session:
-                await self._session.close()
+            await self._close_connection_resources()
             self.state = "CLOSED"
         except Exception as e:
             _LOGGER.error(e)
@@ -257,8 +275,7 @@ class LoxWs:
         try:
             while self.state == "CONNECTED":
                 await asyncio.sleep(second)
-                async with asyncio.Lock():
-                    await self._ws.send_str("keepalive")
+                await self._ws.send_str("keepalive")
         except Exception as e:
             await self.handle_connection_interrupt(exception=e)
 
@@ -365,14 +382,32 @@ class LoxWs:
 
     async def handle_connection_interrupt(self, msg_type: Optional[int] = None, exception: Optional[Exception] = None):
         close_code = self._ws.close_code if self._ws else None
-        if msg_type == WSMsgType.CLOSED or msg_type == WSMsgType.CLOSING:
-            _LOGGER.error("Connection closed unexpectedly%s", f" with code: {close_code}" if close_code is not None else "!")
-        elif exception:
+        # Additional context that the close-code classification below cannot
+        # convey. The plain CLOSED/CLOSING case is described by the match block,
+        # so it is intentionally not logged here to avoid labelling every close
+        # (e.g. a normal 1000) as "unexpected".
+        if exception:
             _LOGGER.error("Connection error: %s of type %s%s", exception, type(exception), f" with code: {close_code}" if close_code is not None else "")
         elif msg_type == WSMsgType.ERROR:
             _LOGGER.error("Connection error - most likely from listener %s", f" with code: {close_code}" if close_code is not None else "!")
 
         match close_code:
+            # Standard RFC6455 close codes
+            case 1000:
+                _LOGGER.info("Connection closed normally (code: %s).", close_code)
+            case 1001:
+                _LOGGER.info("Connection closed: endpoint is going away, e.g. Miniserver shutdown or reboot (code: %s).", close_code)
+            case 1005:
+                _LOGGER.warning("Connection closed without a status code (code: %s).", close_code)
+            case 1006:
+                _LOGGER.warning("Connection closed abnormally: lost without a close frame (code: %s).", close_code)
+            case 1011:
+                _LOGGER.error("Connection closed: the Miniserver encountered an internal error (code: %s).", close_code)
+            case 1012:
+                _LOGGER.info("Connection closed: the Miniserver is restarting (code: %s).", close_code)
+            # Loxone-specific close codes
+            case 4003:
+                _LOGGER.error("Connection closed: blocked due to too many failed login attempts (code: %s)", close_code)
             case 4004:
                 _LOGGER.error("Connection closed: Some user has been changed (code: %s)", close_code)
             case 4005:
@@ -386,8 +421,14 @@ class LoxWs:
             case None:
                 _LOGGER.error("Connection closed unexpectedly without a close code.")
             case _:
-                _LOGGER.error("Connection closed unexpectedly with unknown code: %s", close_code)
-        
+                _LOGGER.error("Connection closed with unrecognized code: %s", close_code)
+
+        # Notify subscribers that the connection was lost before we start the
+        # reconnect loop. Skipped if a reconnect is already in progress so the
+        # event isn't emitted twice for the same outage.
+        if self.state != "RECONNECTING":
+            await self.send_event(self.EventType.CONNECTION_CLOSED)
+
         await self.reconnect()
 
     async def ws_listen(self) -> None:
@@ -439,9 +480,9 @@ class LoxWs:
                 if _DEBUG_ENABLED:
                     _LOGGER.debug("Current message type:%s", self._current_message_type)
                 return True
-            except ValueError:
+            except ValueError as err:
                 _LOGGER.warning("error parse_loxone_message...")
-                raise ValueError("error parse_loxone_message:{}".format(message))
+                raise ValueError(f"error parse_loxone_message:{message}") from err
         return False
 
 
@@ -562,19 +603,31 @@ class LoxWs:
             _LOGGER.error("Error acquiring token. Unexpected content in Loxone response.")
             raise LoxoneException("Error acquiring token. Unexpected content in Loxone response.") from e
 
-    def add_message_callback(self, callback, message_types: list[int] = None):
-        """Add a message callback function with optional message types filter."""
-        self._message_callbacks[callback] = message_types
+    def add_message_callback(self, callback, message_types: list[int] | None = None):
+        """Add a message callback function with optional message types filter.
+
+        When ``message_types`` is omitted the callback is registered for all
+        known message types.
+        """
+        if message_types is None:
+            message_types = list(self._message_callbacks.keys())
         for message_type in message_types:
             self._message_callbacks[message_type].append(callback)
 
-    def add_event_callback(self, callback, event_types:list[EventType] = [EventType.ANY] ):
+    def add_event_callback(self, callback, event_types:list[EventType] | None = None):
+        if event_types is None:
+            event_types = [EventType.ANY]
         self._event_callbacks[callback] = event_types
 
     async def send_event(self, event_type:EventType):
-        for callback, event_types in self._event_callbacks.items():
+        """Dispatch a lifecycle event to all subscribed async callbacks.
+
+        Callbacks must be coroutine functions; they are scheduled as tasks.
+        """
+        for callback, event_types in list(self._event_callbacks.items()):
             if self.EventType.ANY in event_types or event_type in event_types:
-                asyncio.create_task(callback()).add_done_callback(lambda t: _LOGGER.error(f"Error in event callback: {t.exception()}") if t.exception() else None)
+                task = asyncio.create_task(callback())
+                task.add_done_callback(lambda t: _LOGGER.error("Error in event callback: %s", t.exception()) if t.exception() else None)
          
     def remove_message_callback(self, callback, message_types:list[int]):
         """Remove a previously registered callback."""
