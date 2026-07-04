@@ -14,25 +14,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _readable(value):
+    """Render a single state value for logging.
+
+    Text-states (message type 3) and the UUID keys arrive as raw ``bytes`` from
+    the parser, so a plain print shows them as escaped UTF-8 (e.g. ``\\xc3\\xa4``
+    for ``ä``). Decode them to str and turn Loxone's ``0x14`` field separator
+    into a visible ``" | "``. Non-bytes values (e.g. float value-states) pass
+    through unchanged.
+    """
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").replace("\x14", " | ")
+    return value
+
+
+def _readable_data(data):
+    """Decode a parsed message (dict of ``{uuid_bytes: value}``) for logging."""
+    if isinstance(data, dict):
+        return {_readable(key): _readable(value) for key, value in data.items()}
+    return _readable(data)
+
+
 async def example_connection():
     """Example of how to connect to a Loxone server."""
-    
+
     try:
         from loxwebsocket.lox_ws_api import LoxWs
-        
+
         # Create WebSocket API instance
         ws_api = LoxWs()
-        
+
         # Example connection parameters
         # Replace these with your actual Loxone server details
         LOXONE_URL = "http://192.168.X.XX"
         USERNAME = "XXX"
         PASSWORD = "XXX"
-        
+
         print("🔌 Connecting to Loxone server...")
         print(f"URL: {LOXONE_URL}")
         print(f"Username: {USERNAME}")
-        
+
         # Connect to the server
         await ws_api.connect(
             user=USERNAME,
@@ -41,95 +63,99 @@ async def example_connection():
             receive_updates=True,
             max_reconnect_attempts=5
         )
-        
+
         print("✅ Connected successfully!")
-        
+
         # Example: Add a message callback to handle incoming messages
         async def on_message(data, message_type):
-            print(f"📨 Received message type {message_type}: {data}")
-        
+            print(f"📨 Received message type {message_type}: {_readable_data(data)}")
+
         ws_api.add_message_callback(on_message, message_types=[0, 1, 2, 3, 6])
-        
+
         # Example: Add event callbacks (must be async coroutine functions)
         async def on_connected():
             print("🔗 Connection established")
-        
+
         async def on_disconnected():
             print("🔌 Connection lost")
-        
+
         ws_api.add_event_callback(on_connected, event_types=[ws_api.EventType.CONNECTED])
         ws_api.add_event_callback(on_disconnected, event_types=[ws_api.EventType.CONNECTION_CLOSED])
-        
+
         # Keep the connection alive for a while
         print("⏰ Keeping connection alive for 30 seconds...")
         await asyncio.sleep(30)
-        
+
         # Example: Send a command to a device
         # device_uuid = "your-device-uuid"
         # await ws_api.send_websocket_command(device_uuid, "On")
-        
+
         # Disconnect
         print("🔌 Disconnecting...")
         await ws_api.stop()
-        
+
         print("✅ Example completed successfully!")
-        
+
     except Exception as e:
         print(f"❌ Connection example failed: {e}")
         logger.exception("Connection example error")
 
 async def example_token_management():
     """Example of token management."""
-    
+
     try:
         from loxwebsocket import LxToken
-        
+
         print("\n🔑 Token Management Example:")
-        
+
         # Create a token
         token = LxToken()
-        
+
         # Set token properties
         token.set_token("example_token_12345")
         token.set_valid_until(1234567890)
         token.set_hash_alg("SHA256")
-        
+
         print(f"Token: {token.token}")
         print(f"Valid until: {token.valid_until}")
         print(f"Hash algorithm: {token.hash_alg}")
         print(f"Seconds to expire: {token.get_seconds_to_expire()}")
-        
+
         print("✅ Token management example completed!")
-        
+
     except Exception as e:
         print(f"❌ Token management example failed: {e}")
 
 async def example_error_handling():
     """Example of error handling."""
-    
+
     try:
-        from loxwebsocket import LoxoneException, LoxoneHTTPStatusError, LoxoneRequestError
-        
+        from loxwebsocket import (
+            LoxoneException,
+            LoxoneHTTPStatusError,
+            LoxoneRequestError,
+        )
+
         print("\n🚨 Error Handling Example:")
-        
+
         # Example of catching different types of exceptions
         try:
             raise LoxoneException("This is a test exception")
         except LoxoneException as e:
             print(f"Caught LoxoneException: {e}")
-        
+
         try:
             raise LoxoneHTTPStatusError("HTTP 404 error")
         except LoxoneHTTPStatusError as e:
             print(f"Caught LoxoneHTTPStatusError: {e}")
-        
+
         try:
             raise LoxoneRequestError("Request timeout")
         except LoxoneRequestError as e:
             print(f"Caught LoxoneRequestError: {e}")
-        
+
         print("✅ Error handling example completed!")
-        
+
     except Exception as e:
         print(f"❌ Error handling example failed: {e}")
 
@@ -137,11 +163,11 @@ async def main():
     """Run all examples."""
     print("🚀 Lox WebSocket Client Library Examples")
     print("=" * 50)
-    
+
     # Run examples that don't require actual connection
     await example_token_management()
     await example_error_handling()
-    
+
     print("\n" + "=" * 50)
     print("📝 Connection Example:")
     print("To test actual connection, modify the example_connection() function")
@@ -160,4 +186,4 @@ if __name__ == "__main__":
         print("\n⏹️  Examples interrupted by user")
     except Exception as e:
         print(f"\n💥 Unexpected error: {e}")
-        logger.exception("Example error") 
+        logger.exception("Example error")

@@ -1,5 +1,5 @@
-from setuptools import setup
 from Cython.Build import cythonize
+from setuptools import setup
 from setuptools.extension import Extension
 
 # Definiere zwei Build-Varianten: optimized & compatible

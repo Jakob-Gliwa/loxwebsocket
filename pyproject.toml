@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=80.9.0", "Cython>=3.2.4", "wheel>=0.45.1"]
+requires = ["setuptools>=83.0.0", "Cython>=3.2.8", "wheel>=0.47.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "loxwebsocket"
 version = "0.5.2"
 description = "A Python library for connecting to Loxone Smart Home systems via WebSocket"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
     {name = "Jakob Gliwa", email = "your.email@example.com"}
@@ -16,7 +16,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers", 
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -25,32 +24,30 @@ classifiers = [
 ]
 keywords = ["loxone", "websocket", "smart-home", "automation"]
 dependencies = [
-    "aiohttp>=3.13.3",
-    "orjson>=3.11.5",
+    "aiohttp>=3.14.1",
+    "orjson>=3.11.9",
     "pycryptodome>=3.23.0",
-    "construct>=2.10.70",
     "py-cpuinfo>=9.0.0",
 ]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.1",
-    "pytest-cov>=4.1.0"
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0"
 ]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.1",
-    "pytest-cov>=4.1.0",
-    "black>=22.0.0",
-    "isort>=5.0.0",
-    "mypy>=1.0.0",
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    # ruff replaces black (formatter) and isort (import sorting).
     "ruff>=0.15.20",
+    "mypy>=2.1.0",
 ]
 build = [
-    "setuptools>=80.9.0", 
-    "Cython>=3.2.4",
-    "wheel>=0.45.1"
+    "setuptools>=83.0.0",
+    "Cython>=3.2.8",
+    "wheel>=0.47.0"
 ]
 
 [project.urls]
@@ -76,10 +73,10 @@ addopts = "-v --cov=loxwebsocket --cov-report=term-missing"
 asyncio_mode = "strict"
 
 [tool.uv]
-native-tls = true
+system-certs = true
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 88
 src = ["src"]
 extend-exclude = ["*.pyx", "*.pxd"]

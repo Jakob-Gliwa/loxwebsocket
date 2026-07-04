@@ -1,8 +1,11 @@
 import time
-from datetime import datetime
-import logging
+from datetime import datetime, timezone
 
-_LOGGER = logging.getLogger(__name__)
+# Loxone token lifetimes are expressed as "seconds since 1.1.2009 UTC"
+# (doc p. 27). Use a fixed UTC epoch instead of strftime("%s") - the latter is
+# non-portable (not part of the C standard) and interprets the naive datetime
+# as *local* time, skewing the result by the local UTC offset.
+_LOXONE_EPOCH = int(datetime(2009, 1, 1, tzinfo=timezone.utc).timestamp())
 
 class LxToken:
     def __init__(self, token="", valid_until=0, hash_alg="SHA1"):
@@ -11,14 +14,8 @@ class LxToken:
         self._hash_alg = hash_alg
 
     def get_seconds_to_expire(self):
-        dt = datetime.strptime("1.1.2009", "%d.%m.%Y")
-        try:
-            start_date = int(dt.strftime("%s"))
-        except Exception as e:
-            _LOGGER.debug("get_seconds_to_expire error: {}".format(e))
-            start_date = int(dt.timestamp())
-        start_date = int(start_date) + self._valid_until
-        return start_date - int(round(time.time()))
+        expiry = _LOXONE_EPOCH + self._valid_until
+        return expiry - int(round(time.time()))
 
     @property
     def token(self):

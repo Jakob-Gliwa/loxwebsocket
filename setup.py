@@ -1,12 +1,13 @@
-from setuptools import setup
 import logging
-from setuptools.extension import Extension
-from Cython.Build import cythonize
-import shutil
 import os
-from setuptools.command.build_ext import build_ext
 import platform
+import shutil
 from distutils.errors import CompileError
+
+from Cython.Build import cythonize
+from setuptools import setup
+from setuptools.command.build_ext import build_ext
+from setuptools.extension import Extension
 
 # Logging konfigurieren
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -74,7 +75,7 @@ class CleanUpBuildExt(build_ext):
     def build_extensions(self):
         try:
             super().build_extensions()
-        except CompileError as e:
+        except CompileError:
             logger.warning("CompileError erkannt – retry ohne '-march=native'")
             # entferne '-march=native' aus allen Extensions
             for ext in self.extensions:

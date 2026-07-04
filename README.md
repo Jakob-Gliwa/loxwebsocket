@@ -157,11 +157,11 @@ The client uses Cython-based parsers for high-rate value updates (message type 2
 
 ### Requirements
 
-- Python 3.8+
+- Python 3.10+
 - aiohttp
 - orjson
 - pycryptodome
-- construct
+- py-cpuinfo
 
 ### Development
 
