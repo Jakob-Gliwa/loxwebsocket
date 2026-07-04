@@ -13,6 +13,11 @@ permissions:
   contents: read
   id-token: write        # für OIDC-Upload
 
+# Cancel superseded TestPyPI runs on the same ref to save runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # Publish only when triggered manually, or when the upstream tests passed.
@@ -20,8 +25,16 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15-intel, macos-14]   # macos-15-intel = Intel, macos-14 = ARM
+        # One native runner per target arch (no QEMU). ubuntu-24.04-arm builds
+        # aarch64 wheels natively instead of emulated, which is far faster.
+        os:
+          - ubuntu-latest      # Linux x86_64
+          - ubuntu-24.04-arm   # Linux aarch64 (native)
+          - windows-latest     # Windows AMD64
+          - macos-15-intel     # macOS x86_64
+          - macos-14           # macOS arm64
     runs-on: ${{ matrix.os }}
     env:
       # Einheitliche, eindeutige Version pro Workflow-Run für TestPyPI (PEP 440: [.postN][.devN])
@@ -56,22 +69,19 @@ jobs:
 
       - run: pip install --upgrade build cibuildwheel
 
-      # sdist nur einmal (Linux) erstellen
+      # sdist nur einmal (auf dem x86_64-Linux-Runner) erstellen
       - name: Build sdist
-        if: runner.os == 'Linux'
+        if: matrix.os == 'ubuntu-latest'
         run: python -m build --sdist --outdir dist
-
-      - name: Enable QEMU for ARM64
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v4
 
       # Wheels für alle CPython-Versionen (cibuildwheel filtert automatisch
       # anhand von requires-python >= 3.10; PyPy ist in cibuildwheel 4.x nicht
-      # aktiviert, daher kein CIBW_SKIP nötig).
+      # aktiviert, daher kein CIBW_SKIP nötig). Jeder Runner baut nur seine
+      # native Arch (CIBW_ARCHS = "auto"), daher ist kein QEMU nötig.
       - name: Build wheels
         env:
           CIBW_BUILD: "cp3*-*"        # alle 3.x
-          CIBW_ARCHS_LINUX: "auto aarch64"
+          CIBW_BUILD_FRONTEND: "build[uv]"   # schnellere isolierte Build-Envs via uv
         run: cibuildwheel --output-dir dist
 
       - uses: actions/upload-artifact@v7      # pro Runner eigene Artefakte

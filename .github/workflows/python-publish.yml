@@ -14,11 +14,24 @@ permissions:
   contents: read
   id-token: write        # for PyPI trusted publishing (OIDC)
 
+# Serialize releases per ref but never abort an in-flight publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15-intel, macos-14]   # macos-15-intel = Intel, macos-14 = ARM
+        # One native runner per target arch (no QEMU). ubuntu-24.04-arm builds
+        # aarch64 wheels natively instead of emulated, which is far faster.
+        os:
+          - ubuntu-latest      # Linux x86_64
+          - ubuntu-24.04-arm   # Linux aarch64 (native)
+          - windows-latest     # Windows AMD64
+          - macos-15-intel     # macOS x86_64
+          - macos-14           # macOS arm64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -30,23 +43,19 @@ jobs:
 
       - run: pip install --upgrade build cibuildwheel
 
-      # sdist only once (Linux)
+      # sdist only once (on the x86_64 Linux runner)
       - name: Build sdist
-        if: runner.os == 'Linux'
+        if: matrix.os == 'ubuntu-latest'
         run: python -m build --sdist --outdir dist
-
-      # Enable QEMU for cross-arch builds on Linux
-      - name: Enable QEMU for ARM64
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v4
 
       # Build wheels for all CPython versions (cibuildwheel filters by
       # requires-python >= 3.10 automatically; PyPy isn't enabled in
-      # cibuildwheel 4.x, so no CIBW_SKIP is needed).
+      # cibuildwheel 4.x, so no CIBW_SKIP is needed). Each runner builds only
+      # its native arch (CIBW_ARCHS defaults to "auto"), so no QEMU is needed.
       - name: Build wheels
         env:
           CIBW_BUILD: "cp3*-*"        # all 3.x
-          CIBW_ARCHS_LINUX: "auto aarch64"
+          CIBW_BUILD_FRONTEND: "build[uv]"   # faster isolated build envs via uv
         run: cibuildwheel --output-dir dist
 
       - uses: actions/upload-artifact@v7
