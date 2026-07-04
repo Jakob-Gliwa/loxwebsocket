@@ -24,9 +24,11 @@ class LxJsonKeySalt:
         self.time_elapsed_in_seconds = None
         self.hash_alg = None
 
-    def read_user_salt_responce(self, reponse):
-        js = json.loads(reponse)
-        value = js["LL"]["value"]
+    def read_user_salt_responce(self, reponse: dict):
+        # 'reponse' is an already-parsed JSON mapping. Parsing happens once at
+        # each entry boundary (extract_type_0_message / acquire_token), so the
+        # hot dispatch path never re-parses the payload here.
+        value = reponse["LL"]["value"]
         self.key = value["key"]
         self.salt = value["salt"]
         hashAlg = value.get("hashAlg", "SHA1")

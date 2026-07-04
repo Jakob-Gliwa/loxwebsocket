@@ -143,7 +143,15 @@ class LoxWs:
                 if not loxone_url.startswith(("http://", "https://")):
                     loxone_url = f"http://{loxone_url}"
                 self._loxone_url = loxone_url
-                self._loxone_ws_url = loxone_url.replace("https", "wss") if loxone_url.startswith("https:") else loxone_url.replace("http", "ws")
+                # Only rewrite the scheme prefix, not every occurrence: a bare
+                # str.replace("http", "ws") would corrupt hosts that contain the
+                # scheme text (e.g. http://httpbin.org -> ws://wsbin.org). The
+                # scheme is always at the start (prepended above), so replacing
+                # just the first occurrence of the full prefix is safe.
+                if loxone_url.startswith("https://"):
+                    self._loxone_ws_url = loxone_url.replace("https://", "wss://", 1)
+                else:
+                    self._loxone_ws_url = loxone_url.replace("http://", "ws://", 1)
                 await self.async_init()
                 await self.start()
                 await self.send_event(self.EventType.CONNECTED)
@@ -492,16 +500,14 @@ class LoxWs:
                 secured_message[2],
             )
 
-    async def handle_connection_interrupt(self, msg_type: int | None = None, exception: Exception | None = None):
+    async def handle_connection_interrupt(self, exception: Exception | None = None):
         close_code = self._ws.close_code if self._ws else None
         # Additional context that the close-code classification below cannot
-        # convey. The plain CLOSED/CLOSING case is described by the match block,
+        # convey. The graceful-close case is fully described by the match block,
         # so it is intentionally not logged here to avoid labelling every close
         # (e.g. a normal 1000) as "unexpected".
         if exception:
             _LOGGER.error("Connection error: %s of type %s%s", exception, type(exception), f" with code: {close_code}" if close_code is not None else "")
-        elif msg_type == WSMsgType.ERROR:
-            _LOGGER.error("Connection error - most likely from listener %s", f" with code: {close_code}" if close_code is not None else "!")
 
         match close_code:
             # Standard RFC6455 close codes
@@ -559,7 +565,13 @@ class LoxWs:
                 except Exception as inner_exception:
                     _LOGGER.error(f"Error processing message: {inner_exception}")
                     continue
-            await self.handle_connection_interrupt(msg_type=msg.type)
+            # aiohttp's async iterator raises StopAsyncIteration on a
+            # CLOSE/CLOSING/CLOSED frame and never yields it, so the loop exits
+            # normally without `msg` ever holding the close message (it would
+            # still be the last *data* message, or unbound if none arrived).
+            # Don't pass a stale msg.type; the handler derives everything it
+            # needs from self._ws.close_code.
+            await self.handle_connection_interrupt()
 
         except Exception as e:
             await self.handle_connection_interrupt(exception=e)
@@ -604,14 +616,10 @@ class LoxWs:
         If it's exactly 8 bytes, treat it as a header. Otherwise it's payload.
         """
         if len(message) == 8:
-            try:
-                self._current_message_type = message[1]
-                if _DEBUG_ENABLED:
-                    _LOGGER.debug("Current message type:%s", self._current_message_type)
-                return True
-            except ValueError as err:
-                _LOGGER.warning("error parse_loxone_message...")
-                raise ValueError(f"error parse_loxone_message:{message}") from err
+            self._current_message_type = message[1]
+            if _DEBUG_ENABLED:
+                _LOGGER.debug("Current message type:%s", self._current_message_type)
+            return True
         return False
 
 
@@ -708,7 +716,7 @@ class LoxWs:
         message = await self.send_command(f"{c.CMD_GET_KEY_AND_SALT}{self._username}")
 
         key_and_salt = LxJsonKeySalt()
-        key_and_salt.read_user_salt_responce(message)
+        key_and_salt.read_user_salt_responce(json.loads(message))
 
         new_hash = self._encryption_handler.hash_credentials(
             key_and_salt, self._password, self._username

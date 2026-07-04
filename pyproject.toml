@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loxwebsocket"
-version = "0.5.2"
+version = "0.6.0"
 description = "A Python library for connecting to Loxone Smart Home systems via WebSocket"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,12 +34,18 @@ dependencies = [
 test = [
     "pytest>=8.4.0",
     "pytest-asyncio>=1.4.0",
-    "pytest-cov>=7.1.0"
+    "pytest-cov>=7.1.0",
+    "hypothesis>=6.100.0",
+    "time-machine>=2.14.0",
+    "python-dotenv>=1.2.2",
 ]
 dev = [
     "pytest>=8.4.0",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
+    "hypothesis>=6.100.0",
+    "time-machine>=2.14.0",
+    "python-dotenv>=1.2.2",
     # ruff replaces black (formatter) and isort (import sorting).
     "ruff>=0.15.20",
     "mypy>=2.1.0",
@@ -71,6 +77,21 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=loxwebsocket --cov-report=term-missing"
 asyncio_mode = "strict"
+markers = [
+    "live: tests that talk to a real Miniserver (require credentials; skipped in CI and when creds are absent)",
+]
+
+[tool.coverage.run]
+# The variant-specific build helper is not runtime package code.
+omit = ["*/cython_modules/setup.py"]
+
+[tool.mypy]
+python_version = "3.10"
+# Third-party (cpuinfo) and the generated Cython extractors ship no stubs;
+# missing stubs are not type regressions, so don't fail the gate on them.
+ignore_missing_imports = true
+# The variant build helper isn't part of the importable package surface.
+exclude = ['src/loxwebsocket/cython_modules/setup\.py$']
 
 [tool.uv]
 system-certs = true
@@ -102,4 +123,3 @@ known-first-party = ["loxwebsocket"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # re-exports are expected in package inits
-"examples/*" = ["T20"]     # prints are fine in examples

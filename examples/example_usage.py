@@ -6,6 +6,17 @@ Demonstrates how to connect to a Loxone server and handle events.
 
 import asyncio
 import logging
+import os
+
+# Load credentials from a local, un-committed .env (LOXONE_URL / LOXONE_USERNAME
+# / LOXONE_PASSWORD). Optional: if python-dotenv isn't installed, fall back to
+# whatever is already in the environment.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 # Configure logging
 logging.basicConfig(
@@ -45,11 +56,12 @@ async def example_connection():
         # Create WebSocket API instance
         ws_api = LoxWs()
 
-        # Example connection parameters
-        # Replace these with your actual Loxone server details
-        LOXONE_URL = "http://192.168.X.XX"
-        USERNAME = "XXX"
-        PASSWORD = "XXX"
+        # Connection parameters. Never hard-code credentials - read them from
+        # the environment (e.g. a local, un-committed .env) with harmless
+        # placeholder defaults for a dry run.
+        LOXONE_URL = os.environ.get("LOXONE_URL", "192.168.1.10")
+        USERNAME = os.environ.get("LOXONE_USERNAME", "admin")
+        PASSWORD = os.environ.get("LOXONE_PASSWORD", "your-password-here")
 
         print("🔌 Connecting to Loxone server...")
         print(f"URL: {LOXONE_URL}")

@@ -50,7 +50,7 @@ for variant, compile_args in build_variants.items():
         sources=[pyx_variant],
         extra_compile_args=compile_args,
         extra_link_args=compile_args,
-        define_macros=[("CYTHON_BUILD_VARIANT", f'"{variant}"')]
+        define_macros=[("CYTHON_BUILD_VARIANT", f'"{variant}"')],
     )
     cy_ext = cythonize(
         ext,
