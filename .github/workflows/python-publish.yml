@@ -43,6 +43,12 @@ jobs:
 
       - run: pip install --upgrade build cibuildwheel
 
+      # build[uv] needs uv on PATH on macOS/Windows; inside the Linux
+      # container cibuildwheel provisions uv itself.
+      - name: Install uv (non-Linux)
+        if: runner.os != 'Linux'
+        uses: astral-sh/setup-uv@v8.2.0
+
       # sdist only once (on the x86_64 Linux runner)
       - name: Build sdist
         if: matrix.os == 'ubuntu-latest'
