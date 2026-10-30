@@ -1,0 +1,38 @@
+version: 2
+
+# Version updates (scheduled). Security updates are separate: they are switched
+# on in the repo settings (Settings > Advanced Security > Dependabot security
+# updates) and open PRs immediately, independent of the schedule below.
+updates:
+  # Python deps in pyproject.toml / uv.lock (uv ecosystem updates the lockfile)
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 10
+    cooldown:
+      # Wait a few days after a release before proposing it. Protects against
+      # yanked / compromised releases. Security updates ignore the cooldown.
+      default-days: 3
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps(dev)"
+
+  # Pinned actions in .github/workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "ci"

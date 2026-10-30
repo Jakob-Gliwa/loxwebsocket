@@ -1,0 +1,27 @@
+name: security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    # Daily: new advisories appear without any code change in the repo.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: uv audit (known vulnerabilities)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      # Checks the locked versions in uv.lock against OSV. Fails on findings.
+      - name: Audit locked dependencies
+        run: uv audit --locked --preview-features audit-command
