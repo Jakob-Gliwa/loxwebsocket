@@ -775,7 +775,7 @@ wheels = [
 
 [[package]]
 name = "loxwebsocket"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -811,7 +811,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.14.1" },
+    { name = "aiohttp", specifier = ">=3.14.4" },
     { name = "cython", marker = "extra == 'build'", specifier = ">=3.2.8" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100.0" },
     { name = "hypothesis", marker = "extra == 'test'", specifier = ">=6.100.0" },
