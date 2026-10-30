@@ -45,7 +45,7 @@ jobs:
           # falls back to the default ref on manual dispatch.
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with: {python-version: "3.12"}
 
       # Derive the TestPyPI version from the real pyproject.toml version and
@@ -75,7 +75,7 @@ jobs:
       # stellt cibuildwheel uv selbst bereit.
       - name: Install uv (non-Linux)
         if: runner.os != 'Linux'
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@v10.3.2
 
       # sdist nur einmal (auf dem x86_64-Linux-Runner) erstellen
       - name: Build sdist
