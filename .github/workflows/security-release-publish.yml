@@ -1,0 +1,46 @@
+name: security-release-publish
+
+# Runs after a security-floor PR was squash-merged (title starts with
+# "fix(security): "). Creates the GitHub release, which triggers
+# python-publish.yml (build wheels + PyPI trusted publishing).
+#
+# Needs RELEASE_TOKEN: releases created with the default GITHUB_TOKEN do not
+# trigger the `release: published` event.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: "startsWith(github.event.head_commit.message, 'fix(security): ')"
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+    steps:
+      - name: Require RELEASE_TOKEN
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::RELEASE_TOKEN secret is missing; cannot create release"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create release
+        run: |
+          VERSION=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          TAG="v${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists, nothing to release."
+            exit 0
+          fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" \
+            --notes "Security release: raises the minimum version of vulnerable runtime dependencies. See the merged pull request for the advisories." \
+            --latest
