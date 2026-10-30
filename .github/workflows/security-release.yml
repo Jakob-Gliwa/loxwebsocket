@@ -1,0 +1,127 @@
+name: security-release
+
+# Keeps the *published* package safe, not just the lock file.
+#
+# Dependabot only touches uv.lock, which is not shipped. Users of the library
+# resolve dependencies from the ranges in pyproject.toml. This workflow audits
+# the *lowest* allowed versions of the runtime dependencies. If one of them has
+# a known vulnerability, it opens a PR that raises the lower bound (and bumps the
+# patch version) and enables auto-merge. After the merge,
+# security-release-publish.yml creates the GitHub release, which triggers the
+# PyPI publish workflow.
+#
+# Requires the repo secret RELEASE_TOKEN (fine-grained PAT of the repo owner:
+# Contents RW + Pull requests RW). A PAT is needed because pushes/PRs/releases
+# made with the default GITHUB_TOKEN do not trigger other workflows (required
+# checks would never run, the PyPI publish would never start).
+
+on:
+  schedule:
+    - cron: "47 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report what would change, do not open a PR"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-release
+  cancel-in-progress: false
+
+jobs:
+  raise-floor:
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Audit lowest allowed versions of runtime dependencies
+        run: |
+          S=.github/scripts/security_floor.py
+          uv run --no-project --python 3.12 --with packaging python "$S" probe --out probe
+          cd probe
+          uv lock
+          # exit code 1 = vulnerabilities found; anything else with an empty
+          # report is a real failure.
+          uv audit --locked --preview-features audit-command,json-output \
+            --output-format json > ../audit.json || true
+          test -s ../audit.json
+
+      - name: Raise lower bounds
+        id: raise
+        run: |
+          # Bump only if the current version is already released. If an
+          # unreleased version is pending, the next manual release carries the fix.
+          VERSION=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          BUMP=""
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then BUMP="--bump"; fi
+          echo "bump=${BUMP:+true}" >> "$GITHUB_OUTPUT"
+
+          RESULT=$(uv run --no-project --python 3.12 --with packaging python \
+            .github/scripts/security_floor.py raise --audit audit.json \
+            --summary pr-body.md $BUMP)
+          echo "$RESULT"
+          echo "changed=$(echo "$RESULT" | uv run --no-project --python 3.12 python -c 'import json,sys;print(str(json.load(sys.stdin)["changed"]).lower())')" >> "$GITHUB_OUTPUT"
+          echo "pkgs=$(echo "$RESULT" | uv run --no-project --python 3.12 python -c 'import json,sys;print(", ".join(f"{k} {v}" for k,v in json.load(sys.stdin)["packages"].items()))')" >> "$GITHUB_OUTPUT"
+          echo "version=$(echo "$RESULT" | uv run --no-project --python 3.12 python -c 'import json,sys;print(json.load(sys.stdin)["new_version"] or "")')" >> "$GITHUB_OUTPUT"
+
+      - name: Nothing to do
+        if: steps.raise.outputs.changed != 'true'
+        run: echo "No vulnerable lower bounds."
+
+      - name: Report (dry run or missing token)
+        if: steps.raise.outputs.changed == 'true' && (env.DRY_RUN == 'true' || env.HAS_TOKEN != 'true')
+        run: |
+          echo "::warning::Would raise: ${{ steps.raise.outputs.pkgs }} (dry run=$DRY_RUN, RELEASE_TOKEN set=$HAS_TOKEN)"
+          git diff pyproject.toml
+          cat pr-body.md
+
+      - name: Open PR with auto-merge
+        if: steps.raise.outputs.changed == 'true' && env.DRY_RUN != 'true' && env.HAS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          PKGS: ${{ steps.raise.outputs.pkgs }}
+          NEW_VERSION: ${{ steps.raise.outputs.version }}
+        run: |
+          set -euo pipefail
+          # One security PR at a time: skip while an earlier one is still open.
+          OPEN=$(gh pr list --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("auto/security-floor-"))] | length')
+          if [ "$OPEN" != "0" ]; then
+            echo "Security PR already open, skipping."
+            exit 0
+          fi
+
+          uv lock  # keep uv.lock in sync with the new bound / version
+
+          BRANCH="auto/security-floor-$(date +%Y%m%d)"
+          if [ -n "$NEW_VERSION" ]; then
+            TITLE="fix(security): raise minimum ${PKGS} (release ${NEW_VERSION})"
+          else
+            TITLE="deps(security): raise minimum ${PKGS}"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add pyproject.toml uv.lock
+          git commit -m "$TITLE"
+          git push origin "$BRANCH"
+
+          gh pr create --base main --head "$BRANCH" --title "$TITLE" \
+            --body-file pr-body.md --label dependencies --label security
+          gh pr merge "$BRANCH" --auto --squash
