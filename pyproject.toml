@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loxwebsocket"
-version = "0.6.0"
+version = "0.6.1"
 description = "A Python library for connecting to Loxone Smart Home systems via WebSocket"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,7 +24,7 @@ classifiers = [
 ]
 keywords = ["loxone", "websocket", "smart-home", "automation"]
 dependencies = [
-    "aiohttp>=3.14.1",
+    "aiohttp>=3.14.4",
     "orjson>=3.11.9",
     "pycryptodome>=3.23.0",
     "py-cpuinfo>=9.0.0",
